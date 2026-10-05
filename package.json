@@ -1,0 +1,9 @@
+{
+  "name": "bot-ape-sirene",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Recherche des futurs codes APE NAF 2025 à partir de SIREN",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
