@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Recherche des codes APE</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f5f7fa;
+      color: #172033;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 5px 25px rgba(0,0,0,.07);
+    }
+
+    h1 {
+      margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #667085;
+      margin-bottom: 25px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      padding: 15px;
+      border: 1px solid #d0d5dd;
+      border-radius: 10px;
+      font-size: 16px;
+      resize: vertical;
+    }
+
+    textarea:focus {
+      outline: 2px solid #2563eb;
+      border-color: #2563eb;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 9px;
+      padding: 12px 18px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: #2563eb;
+      color: white;
+    }
+
+    .secondary {
+      background: #eef2f7;
+      color: #172033;
+    }
+
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    #status {
+      margin-top: 20px;
+      color: #667085;
+    }
+
+    .table-container {
+      margin-top: 25px;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+
+    th,
+    td {
+      padding: 13px;
+      border-bottom: 1px solid #eaecf0;
+      text-align: left;
+    }
+
+    th {
+      background: #f9fafb;
+      font-weight: 600;
+    }
+
+    .success {
+      color: #027a48;
+      font-weight: 600;
+    }
+
+    .error {
+      color: #b42318;
+      font-weight: 600;
+    }
+
+    .code {
+      font-weight: bold;
+      color: #175cd3;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        margin: 10px auto;
+        padding: 10px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="card">
+
+    <h1>Recherche des nouveaux codes APE</h1>
+
+    <div class="subtitle">
+      Colle tes SIREN ci-dessous, un par ligne.
+    </div>
+
+    <textarea
+      id="sirens"
+      placeholder="Exemple :
+477181010
+537487654
+504263591"></textarea>
+
+    <div class="buttons">
+
+      <button
+        id="search"
+        class="primary">
+        Rechercher
+      </button>
+
+      <button
+        id="clear"
+        class="secondary">
+        Effacer
+      </button>
+
+      <button
+        id="export"
+        class="secondary"
+        disabled>
+        Télécharger CSV
+      </button>
+
+    </div>
+
+    <div id="status"></div>
+
+    <div
+      id="table-container"
+      class="table-container">
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+
+const sirensInput = document.getElementById("sirens");
+const searchButton = document.getElementById("search");
+const clearButton = document.getElementById("clear");
+const exportButton = document.getElementById("export");
+const statusElement = document.getElementById("status");
+const tableContainer = document.getElementById("table-container");
+
+let results = [];
+
+function extractSirens() {
+
+  const values = sirensInput.value
+    .split(/[\n,;\t ]+/)
+    .map(value => value.replace(/\D/g, ""))
+    .filter(Boolean);
+
+  return [...new Set(values)];
+}
+
+
+function escapeHtml(value) {
+
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+
+function renderTable() {
+
+  if (!results.length) {
+    tableContainer.innerHTML = "";
+    return;
+  }
+
+  tableContainer.innerHTML = `
+    <table>
+
+      <thead>
+
+        <tr>
+          <th>SIREN</th>
+          <th>Entreprise</th>
+          <th>Nouveau code APE</th>
+          <th>Libellé APE</th>
+          <th>Statut</th>
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        ${results.map(row => `
+
+          <tr>
+
+            <td>${escapeHtml(row.siren)}</td>
+
+            <td>${escapeHtml(row.name)}</td>
+
+            <td class="code">
+              ${escapeHtml(row.code || "—")}
+            </td>
+
+            <td>
+              ${escapeHtml(row.label || "—")}
+            </td>
+
+            <td class="${row.error ? "error" : "success"}">
+              ${escapeHtml(row.status)}
+            </td>
+
+          </tr>
+
+        `).join("")}
+
+      </tbody>
+
+    </table>
+  `;
+}
+
+
+async function searchSiren(siren) {
+
+  const response =
+    await fetch(`/api/ape?siren=${encodeURIComponent(siren)}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Erreur");
+  }
+
+  return data;
+}
+
+
+async function runSearch() {
+
+  const sirens = extractSirens();
+
+  if (!sirens.length) {
+
+    statusElement.innerHTML =
+      '<span class="error">Entre au moins un SIREN.</span>';
+
+    return;
+  }
+
+  const invalid = sirens.filter(
+    siren => siren.length !== 9
+  );
+
+  if (invalid.length) {
+
+    statusElement.innerHTML =
+      `<span class="error">
+        SIREN invalides : ${invalid.join(", ")}
+      </span>`;
+
+    return;
+  }
+
+  searchButton.disabled = true;
+  exportButton.disabled = true;
+
+  results = sirens.map(siren => ({
+    siren,
+    name: "",
+    code: "",
+    label: "",
+    status: "Recherche...",
+    error: false
+  }));
+
+  renderTable();
+
+  for (let i = 0; i < sirens.length; i++) {
+
+    const siren = sirens[i];
+
+    statusElement.textContent =
+      `Recherche ${i + 1} / ${sirens.length}...`;
+
+    try {
+
+      const data =
+        await searchSiren(siren);
+
+      const row =
+        results.find(item => item.siren === siren);
+
+      row.name = data.denomination || "";
+      row.code = data.code || "";
+      row.label = data.label || "";
+      row.status = data.status || "OK";
+
+    } catch (error) {
+
+      const row =
+        results.find(item => item.siren === siren);
+
+      row.status =
+        error.message || "SIREN introuvable";
+
+      row.error = true;
+    }
+
+    renderTable();
+
+    /*
+     * Petite pause pour éviter d'envoyer trop
+     * de requêtes simultanément.
+     */
+    if (i < sirens.length - 1) {
+      await new Promise(resolve =>
+        setTimeout(resolve, 2200)
+      );
+    }
+  }
+
+  statusElement.innerHTML =
+    `<span class="success">
+      Terminé : ${sirens.length} SIREN traité(s).
+    </span>`;
+
+  searchButton.disabled = false;
+  exportButton.disabled = false;
+}
+
+
+function exportCsv() {
+
+  if (!results.length) {
+    return;
+  }
+
+  const rows = [
+    [
+      "SIREN",
+      "Entreprise",
+      "Nouveau code APE",
+      "Libellé APE",
+      "Statut"
+    ]
+  ];
+
+  results.forEach(row => {
+
+    rows.push([
+      row.siren,
+      row.name,
+      row.code,
+      row.label,
+      row.status
+    ]);
+
+  });
+
+  const csv =
+    "\uFEFF" +
+    rows
+      .map(row =>
+        row
+          .map(value =>
+            `"${String(value || "").replaceAll('"', '""')}"`
+          )
+          .join(";")
+      )
+      .join("\n");
+
+  const blob =
+    new Blob([csv], {
+      type: "text/csv;charset=utf-8"
+    });
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const link =
+    document.createElement("a");
+
+  link.href = url;
+  link.download = "resultats_codes_ape.csv";
+
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
+
+
+searchButton.addEventListener(
+  "click",
+  runSearch
+);
+
+
+clearButton.addEventListener(
+  "click",
+  () => {
+
+    sirensInput.value = "";
+    results = [];
+
+    tableContainer.innerHTML = "";
+    statusElement.textContent = "";
+
+    exportButton.disabled = true;
+
+  }
+);
+
+
+exportButton.addEventListener(
+  "click",
+  exportCsv
+);
+
+</script>
+
+</body>
+</html>
