@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "functions": {
+    "api/ape.js": {
+      "runtime": "nodejs22.x"
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/ape",
+      "dest": "/api/ape.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
+    }
+  ]
+}
